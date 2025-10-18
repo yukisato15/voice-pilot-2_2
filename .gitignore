@@ -1,24 +1,20 @@
 # Python
+.venv/
 __pycache__/
 *.pyc
-.venv/
-.env*
+.env
+*.log
 
 # macOS
 .DS_Store
 
-# VS Code
-.vscode/
-.history/
-
-# Node / Electron / Artifacts
+# Node/Electron（生成物・依存物）
 node_modules/
-electron/
+electron/node_modules/
 dist/
 build/
-*.app
-*.dmg
-*.exe
-*.zip
-*.pak
 *.asar
+
+# 誤って置いたバックアップ
+.git.bak/
+.git_bak/
