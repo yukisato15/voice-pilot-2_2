@@ -37,7 +37,7 @@ export const App: React.FC = () => {
     start: startSession,
     stop: stopSession,
     reset: resetSession,
-    setTheme: setSessionTheme
+    setTheme: setSessionTheme,
   } = session;
   const [consentVisible, setConsentVisible] = useState(false);
   const [consentForm, setConsentForm] = useState<ConsentFormState>({
@@ -54,23 +54,21 @@ export const App: React.FC = () => {
     sessionDir?: string;
     path?: string;
   } | null>(null);
-
   const handleSelectZoomDir = async () => {
-    if (!window.zoomDuo || typeof window.zoomDuo.invoke !== "function") {
+    if (!window.zoomDuo?.invoke) {
       return;
     }
-    const result = await window.zoomDuo.invoke<SelectDirectoryResult>(
-      "zoom/select-recording-dir"
-    );
+    const result = await window.zoomDuo?.invoke<SelectDirectoryResult>("zoom/select-recording-dir");
     if (!result || result.canceled) {
       return;
     }
 
     try {
-      await window.zoomDuo.invoke("config/update", {
-        path: "zoom.recordingPath",
+      const updated = await window.zoomDuo?.invoke<AppConfig>("config/update", {
+        key: "zoom_recording_dir",
         value: result.path ?? ""
       });
+      setConfig(updated);
       setMonitorMessage(`選択フォルダ: ${result.path ?? ""}`);
     } catch (error) {
       console.error("Failed to update zoom directory", error);
@@ -78,12 +76,10 @@ export const App: React.FC = () => {
   };
 
   const handleSelectCsv = async () => {
-    if (!window.zoomDuo || typeof window.zoomDuo.invoke !== "function") {
+    if (!window.zoomDuo?.invoke) {
       return;
     }
-    const result = await window.zoomDuo.invoke<ThemeSelectResult>(
-      "themes/select-csv"
-    );
+    const result = await window.zoomDuo?.invoke<ThemeSelectResult>("themes/select-csv");
     if (!result || result.canceled) {
       return;
     }
@@ -94,21 +90,19 @@ export const App: React.FC = () => {
     };
 
     try {
-      await window.zoomDuo.invoke("config/update", {
-        path: "themes",
+      const updated = await window.zoomDuo?.invoke<AppConfig>("config/update", {
+        key: "themes",
         value: nextThemes
       });
+      setConfig(updated);
     } catch (error) {
-      console.error("Failed to update config", error);
+      console.error('Failed to update config', error);
     }
   };
 
   const handleStartMonitor = async () => {
-    if (!window.zoomDuo || typeof window.zoomDuo.invoke !== "function") {
-      return;
-    }
     try {
-      const result = await window.zoomDuo.invoke<{
+      const result = await window.zoomDuo?.invoke<{
         status: string;
         message?: string;
         path?: string;
@@ -142,11 +136,11 @@ export const App: React.FC = () => {
   };
 
   const handleStopMonitor = async () => {
-    if (!window.zoomDuo || typeof window.zoomDuo.invoke !== "function") {
-      return;
-    }
     try {
-      await window.zoomDuo.invoke<{ status: string }>("zoom/stop-monitor");
+      if (!window.zoomDuo?.invoke) {
+        return;
+      }
+      await window.zoomDuo?.invoke<{ status: string }>("zoom/stop-monitor");
       setMonitorMessage("監視を停止しました");
     } catch (error) {
       setMonitorMessage(error instanceof Error ? error.message : String(error));
@@ -154,15 +148,15 @@ export const App: React.FC = () => {
   };
 
   const handleConsentSubmit = async () => {
-    if (!window.zoomDuo || typeof window.zoomDuo.invoke !== "function") {
-      return;
-    }
     setConsentLoading(true);
     setConsentError(null);
     const timestamp = new Date().toISOString();
 
     try {
-      const result = await window.zoomDuo.invoke<ConsentSubmitResult>(
+      if (!window.zoomDuo?.invoke) {
+        return;
+      }
+      const result = await window.zoomDuo?.invoke<ConsentSubmitResult>(
         "consent/submit",
         {
           participant_name: consentForm.participantName,
@@ -186,59 +180,66 @@ export const App: React.FC = () => {
           last_pdf_path: result.path ?? "",
           last_submitted_at: submittedAt
         };
-        await window.zoomDuo.invoke("config/update", {
-          path: "consent",
+
+        const updated = await window.zoomDuo?.invoke<AppConfig>("config/update", {
+          key: "consent",
           value: consentConfig
         });
-        setConfig((prev) =>
-          prev
-            ? {
-                ...prev,
-                consent: consentConfig
-              }
-            : prev
-        );
+        setConfig(updated);
         setLastConsent({
           timestamp: submittedAt,
-          sessionDir: result.session_dir,
-          path: result.path ?? ""
+          sessionDir: consentConfig.last_session_dir,
+          path: consentConfig.last_pdf_path
         });
         setConsentVisible(false);
       } else {
-        setConsentError("同意書の生成に失敗しました。");
+        setConsentError(result?.message ?? "同意 PDF の生成に失敗しました。");
       }
     } catch (error) {
-      setConsentError(error instanceof Error ? error.message : String(error));
+      setConsentError(
+        error instanceof Error ? error.message : String(error)
+      );
     } finally {
       setConsentLoading(false);
     }
   };
 
+
   useEffect(() => {
-    if (!window.zoomDuo || typeof window.zoomDuo.invoke !== "function") {
+    if (!window.zoomDuo?.invoke) {
       return;
     }
     window.zoomDuo.invoke<AppConfig>("config/get").then((cfg) => {
       setConfig(cfg);
-      const consent = cfg.consent;
-      if (consent?.completed) {
+      const completed = cfg.consent?.completed ?? false;
+      setConsentVisible(!completed);
+      setConsentForm({
+        participantName: cfg.consent?.participant_name ?? "",
+        meetingId: cfg.consent?.meeting_id ?? "",
+        agreeHeadphones: completed,
+        agreeLocalRecording: completed,
+        agreeUpload: completed
+      });
+      if (completed) {
         setLastConsent({
-          timestamp: consent.last_submitted_at ?? "",
-          sessionDir: consent.last_session_dir,
-          path: consent.last_pdf_path
+          timestamp: cfg.consent?.last_submitted_at ?? "",
+          sessionDir: cfg.consent?.last_session_dir,
+          path: cfg.consent?.last_pdf_path
         });
+      } else {
+        setLastConsent(null);
       }
     });
 
-    if (!window.zoomDuo || typeof window.zoomDuo.on !== "function") {
-      return () => void 0;
+    if (!window.zoomDuo?.on) {
+      return;
     }
 
-    const offStatus = window.zoomDuo.on("recording/status", (_event, payload) => {
+    const offStatus = window.zoomDuo?.on("recording/status", (_event, payload) => {
       setStatus(payload as RecordingStatus);
     });
 
-    const offConfig = window.zoomDuo.on("config/changed", (_event, payload) => {
+    const offConfig = window.zoomDuo?.on("config/changed", (_event, payload) => {
       if (!payload) {
         return;
       }
@@ -268,7 +269,7 @@ export const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!config?.themes.csv_path || !window.zoomDuo.invoke) {
+    if (!config?.themes.csv_path) {
       setThemesSummary(null);
       setAvailableThemes([]);
       resetSession();
@@ -280,8 +281,8 @@ export const App: React.FC = () => {
     setThemesError(null);
     const initialTheme = sessionState.theme;
 
-    window.zoomDuo
-      .invoke<ThemeHashIndexResult>("themes/hash-index", {
+    window.zoomDuo?.
+      ?.invoke<ThemeHashIndexResult>("themes/hash-index", {
         csv_path: config.themes.csv_path
       })
       .then((result) => {
@@ -289,8 +290,8 @@ export const App: React.FC = () => {
           setThemesSummary(result);
         }
         const csvPath = config.themes.csv_path;
-        window.zoomDuo
-          .invoke<{ items: ThemeRecord[] } | null>("themes/load-records", { csv_path: csvPath })
+        window.zoomDuo?.
+          ?.invoke<{ items: ThemeRecord[] } | null>("themes/load-records", { csv_path: csvPath })
           .then((records) => {
             if (active && records && records.items) {
               setAvailableThemes(records.items);
@@ -310,8 +311,7 @@ export const App: React.FC = () => {
     return () => {
       active = false;
     };
-  }, [config?.themes.csv_path, resetSession, sessionState.theme, setSessionTheme]);
-
+  }, [config?.themes.csv_path]);
   useEffect(() => {
     const duration = config?.session?.talk_seconds ?? 360;
     if (status.state === "recording") {
@@ -331,27 +331,10 @@ export const App: React.FC = () => {
       stopSession();
       setMonitorMessage("Zoom録画停止を検知しました。タイマーを停止しました。");
     }
-  }, [
-    status.state,
-    sessionState.running,
-    sessionState.theme,
-    availableThemes,
-    config?.session?.talk_seconds,
-    setSessionTheme,
-    startSession,
-    stopSession
-  ]);
-
+  }, [status.state, sessionState.running, sessionState.theme, availableThemes, config?.session?.talk_seconds, startSession, stopSession, setSessionTheme]);
   return (
     <>
-      <main
-        style={{
-          padding: "24px",
-          fontFamily: "sans-serif",
-          position: "relative",
-          color: "#f5f5f5"
-        }}
-      >
+      <main style={{ padding: "24px", fontFamily: "sans-serif", position: "relative", color: "#f5f5f5" }}>
         <h1>Zoom Duo Recorder</h1>
 
         <section>
@@ -392,6 +375,7 @@ export const App: React.FC = () => {
             <button
               onClick={handleStopMonitor}
               style={{
+                marginRight: "12px",
                 padding: "8px 16px",
                 borderRadius: "6px",
                 border: "1px solid #666",
@@ -402,57 +386,67 @@ export const App: React.FC = () => {
             >
               監視停止
             </button>
+            <span style={{ color: "#ddd" }}>
+              {config?.zoom_recording_dir || "未設定"}
+            </span>
           </div>
           {monitorMessage && (
-            <p style={{ marginTop: "12px", color: "#ccc" }}>{monitorMessage}</p>
+            <p style={{ color: "#9fd7ff", marginTop: "8px" }}>{monitorMessage}</p>
           )}
+          {lastConsent && (
+            <p style={{ color: "#9fd7ff", marginTop: "8px" }}>
+              直近の同意: {lastConsent.timestamp ? new Date(lastConsent.timestamp).toLocaleString() : "未記録"} / セッションフォルダ:{" "}
+              {lastConsent.sessionDir ?? "不明"}{lastConsent.path ? ` (PDF: ${lastConsent.path})` : ""}
+            </p>
+          )}
+          <button
+            onClick={openConsentModal}
+            style={{
+              marginTop: "8px",
+              padding: "6px 12px",
+              borderRadius: "6px",
+              border: "1px solid #666",
+              background: "transparent",
+              color: "#ddd",
+              cursor: "pointer"
+            }}
+          >
+            同意内容を再確認
+          </button>
         </section>
 
-        <section style={{ marginTop: "24px" }}>
-          <h2>同意フロー</h2>
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <button
-              onClick={openConsentModal}
-              style={{
-                padding: "8px 16px",
-                borderRadius: "6px",
-                border: "1px solid #666",
-                background: "#2b2b2b",
-                color: "#fff",
-                cursor: "pointer"
-              }}
-            >
-              同意フォームを開く
-            </button>
-            {config?.consent?.completed ? (
-              <span style={{ color: "#6be675" }}>直近の同意: {lastConsent?.timestamp ?? ""}</span>
-            ) : (
-              <span style={{ color: "#f66" }}>未完了</span>
-            )}
-          </div>
-          {lastConsent?.path && (
-            <p style={{ color: "#bbb" }}>PDF: {lastConsent.path}</p>
-          )}
+        <section>
+          <h2>設定プレビュー</h2>
+          <pre
+            style={{
+              background: "#111",
+              color: "#eee",
+              padding: "16px",
+              borderRadius: "8px",
+              overflowX: "auto"
+            }}
+          >
+            {config ? JSON.stringify(config, null, 2) : "読み込み中..."}
+          </pre>
         </section>
 
-        <section style={{ marginTop: "24px" }}>
-          <h2>テーマ管理</h2>
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <button
-              onClick={handleSelectCsv}
-              style={{
-                padding: "8px 16px",
-                borderRatio: "6px",
-                border: "1px solid #666",
-                background: "#2b2b2b",
-                color: "#fff",
-                cursor: "pointer"
-              }}
-            >
-              テーマ CSV を選択
-            </button>
-            {!config?.themes.csv_path && <p>テーマ CSV パスが未設定です。</p>}
-          </div>
+        <section>
+          <h2>テーマ CSV 状態</h2>
+          <button
+            onClick={handleSelectCsv}
+            style={{
+              marginBottom: "12px",
+              padding: "8px 16px",
+              borderRadius: "6px",
+              border: "1px solid #666",
+              background: "#2b2b2b",
+              color: "#fff",
+              cursor: "pointer"
+            }}
+          >
+            テーマ CSV を選択
+          </button>
+          {!config?.themes.csv_path && <p>テーマ CSV パスが未設定です。</p>}
           {config?.themes.csv_path && (
             <>
               <p>読み込み元: {config.themes.csv_path}</p>
@@ -465,7 +459,9 @@ export const App: React.FC = () => {
                       <p>重複候補: {themesSummary.duplicates.length} 件</p>
                       <ul>
                         {themesSummary.duplicates.map((dup) => (
-                          <li key={dup.hash}>{dup.theme_ids.join(", ")}</li>
+                          <li key={dup.hash}>
+                            {dup.theme_ids.join(", ")}
+                          </li>
                         ))}
                       </ul>
                     </div>
@@ -488,7 +484,6 @@ export const App: React.FC = () => {
           defaultDurationSeconds={config?.session?.talk_seconds ?? 360}
         />
       </main>
-
       <ConsentModal
         open={consentVisible}
         state={consentForm}

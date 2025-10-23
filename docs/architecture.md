@@ -28,26 +28,20 @@ Zoom Duo Recorder は Electron を用いたデスクトップアプリで、フ�
 - **Python ⇄ ffmpeg**: `subprocess.run`/`subprocess.Popen` によるコマンド実行。ログは stdout/stderr を Main へ中継。
 
 ## モジュール構成
-- `main`
-  - `app.ts`: 起動処理、ウィンドウ生成、起動時モーダル挿入。
-  - `ipc-handlers/`: Renderer からの要求受付 (`consent`, `recording`, `themes`, `uploads` など)。
-  - `stores/configStore.ts`: `electron-store` による設定保存。
-  - `python/processManager.ts`: Python ワーカーの起動・監視。
-  - `watchers/zoomWatcher.ts`: `chokidar` ベースの録画フォルダ監視と状態機械。
-- `renderer`
-  - `screens/OnboardingModal/`: 3 ページ構成の同意モーダル。
-  - `screens/PreparationChecklist/`: Zoom 設定/ヘッドホン診断。
-  - `screens/SessionControl/`: テーマ提示、タイマー、ヒント、録画インジケータ。
-  - `screens/UploadSummary/`: 命名結果とアップロードレポート表示。
-  - `components/AudioLevelMeter.tsx`: WebAudio API を利用した入力レベル解析。
-  - `hooks/useSessionTimer.ts`: 6 分タイマー、無音カウントダウン、休憩アラート。
-- `python`
-  - `worker.py`: Node からの JSON コマンドを受信し、各サービスにディスパッチ。
-  - `services/ffmpeg.py`: LR 合成、ラウドネス正規化。
-  - `services/uploaders/`: S3, SFTP, Box それぞれの実装。
-  - `services/pdf.py`: Jinja2 テンプレートのレンダリングと PDF 生成。
-  - `services/metadata.py`: 命名規則、メタ JSON、レポート CSV の生成。
-  - `services/themes.py`: CSV ロードと重複検出。
+- `electron/src/main/`
+  - `main.ts`: ウィンドウ生成、開発/本番でのロード先切替、アプリライフサイクル管理。
+  - `ipcHandlers/`: UI からの IPC 要求 (`config`, `zoom`, `themes`, `consent` など) を集約。
+  - `configStore.ts`: `electron-store` による設定永続化。
+  - `pythonManager.ts`: Python ワーカーの起動・監視と JSON RPC ディスパッチ。
+  - `zoomWatcher.ts`: `chokidar` を用いた Zoom 録画フォルダ監視。
+- `electron/src/renderer/`
+  - React + Vite を利用したモダン UI。オンボーディング、同意取得、セッション操作 UI をコンポーネント分割。
+  - `hooks/`, `components/`, `screens/` でロールごとに整理。
+- `backend/`
+  - `worker.py`: Electron からの JSON メッセージを受信し、サービス層へディスパッチ。
+  - `services/`: ffmpeg ラッパ、PDF 生成、アップロード、メタデータ生成、テーマ CSV 処理など。
+- `legacy/renderer_legacy/`
+  - 旧来のブラウザ向け UI。仕様参照用に保持し、現行ビルドには含めない。
 
 ## 設定・永続化
 - `electron-store` により `config.json` スキーマを保持。初回起動時にデフォルト値を投入。
